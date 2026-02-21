@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "207512687007",
+    "project_id": "wanwancafe-96bba",
+    "storage_bucket": "wanwancafe-96bba.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:207512687007:android:d872cefbd359e147f6adaa",
+        "android_client_info": {
+          "package_name": "com.example.coffeeshop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDu4W5ItNFZ4a1EYw-SvQaRLATCc3EdX4o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
