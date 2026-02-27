@@ -14,12 +14,19 @@ class _HomeScreenState extends State<HomeScreen> {
   String selectedCategory = 'ทั้งหมด';
   bool isGridView = true;
 
-  final List<String> categories = ['ทั้งหมด', 'coffee', 'non-coffee', 'food'];
-
-  Stream<QuerySnapshot> get _menuStream {
-    final ref = FirebaseFirestore.instance.collection('menu');
-    if (selectedCategory == 'ทั้งหมด') return ref.snapshots();
-    return ref.where('category', isEqualTo: selectedCategory).snapshots();
+  IconData _getCategoryIcon(String cat) {
+    switch (cat.toLowerCase().trim()) {
+      case 'coffee':
+        return Icons.coffee;
+      case 'non-coffee':
+        return Icons.local_drink;
+      case 'food':
+        return Icons.restaurant;
+      case 'ทั้งหมด':
+        return Icons.apps;
+      default:
+        return Icons.category;
+    }
   }
 
   @override
@@ -36,80 +43,143 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildCategoryFilter(),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _menuStream,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'),
-                  );
-                }
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.coffee, size: 60, color: Colors.grey),
-                        SizedBox(height: 10),
-                        Text(
-                          'ไม่มีเมนูในหมวดนี้',
-                          style: TextStyle(color: Colors.grey, fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('menu').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'));
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                final menuList = snapshot.data!.docs;
-                return isGridView ? _buildGrid(menuList) : _buildList(menuList);
-              },
-            ),
-          ),
-        ],
+          final allDocs = snapshot.data?.docs ?? [];
+
+          // ดึง category จาก Firestore จริง (lowercase + trim เพื่อกัน typo)
+          final Set<String> rawCategories = {};
+          for (final doc in allDocs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final cat = (data['category'] ?? '').toString().trim();
+            if (cat.isNotEmpty) rawCategories.add(cat);
+          }
+          final categories = ['ทั้งหมด', ...rawCategories.toList()..sort()];
+
+          // กรองโดยเปรียบเทียบแบบ case-insensitive
+          final filteredDocs = selectedCategory == 'ทั้งหมด'
+              ? allDocs
+              : allDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final cat = (data['category'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+                  return cat == selectedCategory.toLowerCase();
+                }).toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildChoiceChips(categories, allDocs),
+              // แสดงจำนวนรายการที่กรองได้
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: Text(
+                  'แสดง ${filteredDocs.length} รายการ',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+              Expanded(
+                child: filteredDocs.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 60,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'ไม่มีเมนูในหมวดนี้',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : isGridView
+                    ? _buildGrid(filteredDocs)
+                    : _buildList(filteredDocs),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  // แถบ Category
-  Widget _buildCategoryFilter() {
-    return SizedBox(
-      height: 50,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          final cat = categories[index];
-          final isSelected = cat == selectedCategory;
-          return GestureDetector(
-            onTap: () => setState(() => selectedCategory = cat),
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.brown : Colors.brown[50],
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Center(
-                child: Text(
-                  cat,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.brown,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
+  // ============================================================
+  // CHOICE CHIPS
+  // ============================================================
+  Widget _buildChoiceChips(
+    List<String> categories,
+    List<QueryDocumentSnapshot> allDocs,
+  ) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Wrap(
+        spacing: 8, // ระยะห่างแนวนอน
+        runSpacing: 6, // ระยะห่างแนวตั้ง (ถ้า wrap ขึ้นบรรทัดใหม่)
+        children: categories.map((cat) {
+          final isSelected = selectedCategory == cat;
+
+          // นับจำนวนต่อ category
+          final count = cat == 'ทั้งหมด'
+              ? allDocs.length
+              : allDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final docCat = (data['category'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+                  return docCat == cat.toLowerCase();
+                }).length;
+
+          return ChoiceChip(
+            // ไอคอนซ้าย
+            avatar: Icon(
+              _getCategoryIcon(cat),
+              size: 16,
+              color: isSelected ? Colors.white : Colors.brown,
+            ),
+            // label รวมจำนวน
+            label: Text('$cat  ($count)'),
+            labelStyle: TextStyle(
+              color: isSelected ? Colors.white : Colors.brown,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+            selected: isSelected,
+            // สีเมื่อเลือก
+            selectedColor: Colors.brown,
+            // สีปกติ
+            backgroundColor: Colors.brown[50],
+            // ซ่อน checkmark ของ Material 3
+            showCheckmark: false,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(
+                color: isSelected ? Colors.brown : Colors.brown.shade200,
               ),
             ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            onSelected: (_) => setState(() => selectedCategory = cat),
           );
-        },
+        }).toList(),
       ),
     );
   }
@@ -137,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final imageUrl = data['imageUrl'] ?? '';
     final name = data['name'] ?? 'ไม่ระบุ';
     final price = data['price'] ?? 0;
-    final category = data['category'] ?? '';
+    final category = (data['category'] ?? '').toString().trim();
 
     return GestureDetector(
       onTap: () => _goToDetail(menuId, data),
@@ -147,7 +217,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // รูปภาพ
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(
@@ -163,7 +232,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     : _placeholder(),
               ),
             ),
-            // ข้อมูล
             Padding(
               padding: const EdgeInsets.all(8),
               child: Column(
@@ -234,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final imageUrl = data['imageUrl'] ?? '';
     final name = data['name'] ?? 'ไม่ระบุ';
     final price = data['price'] ?? 0;
-    final category = data['category'] ?? '';
+    final category = (data['category'] ?? '').toString().trim();
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -281,7 +349,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ไปหน้ารายละเอียด
   void _goToDetail(String menuId, Map<String, dynamic> data) {
     Navigator.push(
       context,

@@ -12,11 +12,37 @@ class AuthService {
       );
     } catch (e) {
       print("Email Login Error: $e");
+      rethrow;
+    }
+  }
+
+  // 2. สมัครสมาชิกด้วย Email & Password
+  Future<UserCredential?> signUpWithEmail(
+    String email,
+    String password,
+    String displayName,
+  ) async {
+    try {
+      // สร้างบัญชีใหม่
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // บันทึกชื่อที่กรอก
+      await credential.user?.updateDisplayName(displayName);
+
+      // reload เพื่อให้ currentUser อัปเดตทันที
+      await credential.user?.reload();
+
+      return credential;
+    } catch (e) {
+      print("Sign Up Error: $e");
       rethrow; // ส่ง Error ไปจัดการที่หน้า UI
     }
   }
 
-  // 2. ล็อกอินด้วย Google (Web Popup)
+  // 3. ล็อกอินด้วย Google (Web Popup)
   Future<UserCredential?> signInWithGoogle() async {
     try {
       GoogleAuthProvider googleProvider = GoogleAuthProvider();
@@ -27,7 +53,7 @@ class AuthService {
     }
   }
 
-  // 3. ล็อกอินด้วย GitHub (Web Popup)
+  // 4. ล็อกอินด้วย GitHub (Web Popup)
   Future<UserCredential?> signInWithGitHub() async {
     try {
       GithubAuthProvider githubProvider = GithubAuthProvider();
@@ -38,7 +64,7 @@ class AuthService {
     }
   }
 
-  // 4. ล็อกอินด้วย Microsoft (Web Popup)
+  // 5. ล็อกอินด้วย Microsoft (Web Popup)
   Future<UserCredential?> signInWithMicrosoft() async {
     try {
       MicrosoftAuthProvider microsoftProvider = MicrosoftAuthProvider();

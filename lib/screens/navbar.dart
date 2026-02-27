@@ -1,9 +1,10 @@
+import 'package:a/screens/signup.dart';
 import 'package:flutter/material.dart';
 import 'package:stylish_bottom_bar/stylish_bottom_bar.dart';
 import 'order.dart';
 import '../screens/home.dart';
+import 'history.dart';
 import 'signin.dart';
-import 'productpage.dart';
 
 class BottomNavBar extends StatefulWidget {
   const BottomNavBar({super.key});
@@ -31,7 +32,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
         children: [
           HomeScreen(tableNo: 1), // แก้ไข: เพิ่ม tableNo ตามที่คุณกำหนดไว้
           OrderScreen(), // ใส่แทนชั่วคราวเพื่อเทสระบบ
-          Center(child: Text('History')),
+          HistoryScreen(),
           SignInScreen(),
         ],
       ),
