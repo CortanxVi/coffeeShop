@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:stylish_bottom_bar/stylish_bottom_bar.dart';
 import 'order.dart';
 import '../screens/home.dart';
+import 'signin.dart';
+import 'productpage.dart';
 
 class BottomNavBar extends StatefulWidget {
   const BottomNavBar({super.key});
@@ -26,12 +28,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
       body: PageView(
         controller: controller,
         physics: const NeverScrollableScrollPhysics(),
-        // เอาคำว่า const หน้าวงเล็บ [] ออก เพราะ HomeScreen ไม่ใช่ค่าคงที่ที่ไม่มีพารามิเตอร์แล้ว
         children: [
           HomeScreen(tableNo: 1), // แก้ไข: เพิ่ม tableNo ตามที่คุณกำหนดไว้
           OrderScreen(), // ใส่แทนชั่วคราวเพื่อเทสระบบ
-          Center(child: Text('History Page', style: TextStyle(fontSize: 24))),
-          Center(child: Text('Profile Page', style: TextStyle(fontSize: 24))),
+          Center(child: Text('History')),
+          SignInScreen(),
         ],
       ),
       bottomNavigationBar: StylishBottomBar(

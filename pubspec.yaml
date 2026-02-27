@@ -37,6 +37,11 @@ dependencies:
   stylish_bottom_bar: ^1.1.1
   firebase_core: ^4.4.0
   cloud_firestore: ^6.1.2
+  firebase_auth: ^6.1.4
+  google_sign_in: ^7.2.0
+  http: ^1.6.0
+  cached_network_image: ^3.3.1
+  image_picker: ^1.0.7 
 
 dev_dependencies:
   flutter_test:
