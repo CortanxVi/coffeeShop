@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'screens/navbar.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
-import 'theme/appTheme.dart';
+import 'screens/signin.dart';
+import 'screens/navbar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,8 +18,29 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'WanWan Cafe',
-      theme: AppTheme.themeData,
-      home: const BottomNavBar(),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.brown),
+        useMaterial3: true,
+      ),
+      // ใช้ StreamBuilder ฟัง auth state ตลอดเวลา
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          // กำลังโหลด auth state
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          // ยังไม่ login → บังคับไป SignIn
+          if (!snapshot.hasData || snapshot.data == null) {
+            return const SignInScreen();
+          }
+          // login แล้ว → เข้าแอปได้
+          return const BottomNavBar();
+        },
+      ),
     );
   }
 }

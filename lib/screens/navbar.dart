@@ -1,10 +1,10 @@
-import 'package:a/screens/signup.dart';
 import 'package:flutter/material.dart';
 import 'package:stylish_bottom_bar/stylish_bottom_bar.dart';
-import 'order.dart';
+import '../screens/order.dart';
 import '../screens/home.dart';
-import 'history.dart';
-import 'signin.dart';
+import '../screens/history.dart';
+import '../screens/signin.dart';
+import '../screens/dashboard.dart';
 
 class BottomNavBar extends StatefulWidget {
   const BottomNavBar({super.key});
@@ -29,10 +29,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
       body: PageView(
         controller: controller,
         physics: const NeverScrollableScrollPhysics(),
-        children: [
-          HomeScreen(tableNo: 1), // แก้ไข: เพิ่ม tableNo ตามที่คุณกำหนดไว้
-          OrderScreen(), // ใส่แทนชั่วคราวเพื่อเทสระบบ
+        children: const [
+          HomeScreen(tableNo: 1),
+          OrderScreen(),
           HistoryScreen(),
+          DashboardScreen(),
           SignInScreen(),
         ],
       ),
@@ -64,6 +65,13 @@ class _BottomNavBarState extends State<BottomNavBar> {
             title: const Text('History'),
           ),
           BottomBarItem(
+            icon: const Icon(Icons.dashboard_outlined),
+            selectedIcon: const Icon(Icons.dashboard),
+            selectedColor: Colors.brown,
+            unSelectedColor: Colors.grey,
+            title: const Text('Dashboard'),
+          ),
+          BottomBarItem(
             icon: const Icon(Icons.person_2_outlined),
             selectedIcon: const Icon(Icons.person),
             selectedColor: Colors.brown,
@@ -75,9 +83,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
         onTap: (index) {
           if (index == selected) return;
           controller.jumpToPage(index);
-          setState(() {
-            selected = index;
-          });
+          setState(() => selected = index);
         },
       ),
     );

@@ -1,82 +1,127 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // 1. ล็อกอินด้วย Email & Password
+  Future<UserCredential?> signUpWithEmail(
+    String email,
+    String password,
+    String name,
+  ) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    await credential.user?.updateDisplayName(name);
+    return credential;
+  }
+
   Future<UserCredential?> signInWithEmail(String email, String password) async {
+    return await _auth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+  }
+
+  Future<User?> signInWithGoogle() async {
     try {
-      return await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+      googleProvider.addScope('email');
+      googleProvider.addScope('profile');
+      final UserCredential result = await _auth.signInWithPopup(googleProvider);
+      return result.user;
     } catch (e) {
-      print("Email Login Error: $e");
       rethrow;
     }
   }
 
-  // 2. สมัครสมาชิกด้วย Email & Password
-  Future<UserCredential?> signUpWithEmail(
-    String email,
-    String password,
-    String displayName,
-  ) async {
+  Future<User?> signInWithGitHub() async {
     try {
-      // สร้างบัญชีใหม่
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+      final GithubAuthProvider githubProvider = GithubAuthProvider();
+      githubProvider.addScope('read:user');
+      githubProvider.addScope('user:email');
+
+      final UserCredential result = await _auth.signInWithPopup(githubProvider);
+
+      final user = result.user;
+      if (user == null) return null;
+
+      final additionalInfo = result.additionalUserInfo;
+      final profile = additionalInfo?.profile;
+
+      // ดึงชื่อ: name → login (username) → displayName → fallback
+      final githubName =
+          profile?['name'] as String? ??
+          profile?['login'] as String? ??
+          user.displayName ??
+          'GitHub User';
+
+      // ดึง email: profile email → firebase email → fallback
+      final githubEmail = profile?['email'] as String? ?? user.email ?? '';
+
+      // ดึงรูป avatar จาก GitHub profile
+      final githubPhoto =
+          profile?['avatar_url'] as String? ?? user.photoURL ?? '';
+
+      // อัปเดต displayName ใน Firebase Auth
+      if (user.displayName == null ||
+          user.displayName!.isEmpty ||
+          user.displayName == 'GitHub User') {
+        await user.updateDisplayName(githubName);
+      }
+
+      // บันทึกลง Firestore เพื่อเก็บ email กรณีที่ GitHub email เป็น private
+      await _saveUserProfile(
+        uid: user.uid,
+        name: githubName,
+        email: githubEmail,
+        photoUrl: githubPhoto,
+        provider: 'github',
       );
 
-      // บันทึกชื่อที่กรอก
-      await credential.user?.updateDisplayName(displayName);
-
-      // reload เพื่อให้ currentUser อัปเดตทันที
-      await credential.user?.reload();
-
-      return credential;
+      // reload ให้ displayName มีผลทันที
+      await user.reload();
+      return _auth.currentUser;
     } catch (e) {
-      print("Sign Up Error: $e");
-      rethrow; // ส่ง Error ไปจัดการที่หน้า UI
+      rethrow;
     }
   }
 
-  // 3. ล็อกอินด้วย Google (Web Popup)
-  Future<UserCredential?> signInWithGoogle() async {
+  Future<User?> signInWithMicrosoft() async {
     try {
-      GoogleAuthProvider googleProvider = GoogleAuthProvider();
-      return await _auth.signInWithPopup(googleProvider);
+      final MicrosoftAuthProvider microsoftProvider = MicrosoftAuthProvider();
+      microsoftProvider.addScope('email');
+      microsoftProvider.addScope('openid');
+      microsoftProvider.addScope('profile');
+      final UserCredential result = await _auth.signInWithPopup(
+        microsoftProvider,
+      );
+      return result.user;
     } catch (e) {
-      print("Google Login Error: $e");
-      return null;
+      rethrow;
     }
   }
 
-  // 4. ล็อกอินด้วย GitHub (Web Popup)
-  Future<UserCredential?> signInWithGitHub() async {
+  Future<void> _saveUserProfile({
+    required String uid,
+    required String name,
+    required String email,
+    required String photoUrl,
+    required String provider,
+  }) async {
     try {
-      GithubAuthProvider githubProvider = GithubAuthProvider();
-      return await _auth.signInWithPopup(githubProvider);
-    } catch (e) {
-      print("GitHub Login Error: $e");
-      return null;
-    }
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'displayName': name,
+        'email': email,
+        'photoUrl': photoUrl,
+        'provider': provider,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
   }
 
-  // 5. ล็อกอินด้วย Microsoft (Web Popup)
-  Future<UserCredential?> signInWithMicrosoft() async {
-    try {
-      MicrosoftAuthProvider microsoftProvider = MicrosoftAuthProvider();
-      microsoftProvider.setCustomParameters({'prompt': 'select_account'});
-      return await _auth.signInWithPopup(microsoftProvider);
-    } catch (e) {
-      print("Microsoft Login Error: $e");
-      return null;
-    }
-  }
-
-  // ออกจากระบบ
   Future<void> signOut() async {
     await _auth.signOut();
   }

@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -40,6 +41,8 @@ class _MenuDetailScreenState extends State<MenuDetailScreen> {
         'status': 'pending',
         'note': _noteController.text.trim(),
         'timestamp': FieldValue.serverTimestamp(),
+        'userId': FirebaseAuth.instance.currentUser?.uid ?? '', // ← เพิ่ม
+        'notified': false, // ← เพิ่ม
       });
 
       if (mounted) {
