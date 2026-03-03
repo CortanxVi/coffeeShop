@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'menuDetailed.dart';
+import '../service/cartService.dart';
+import 'cart.dart';
 
 class HomeScreen extends StatefulWidget {
   final int tableNo;
@@ -38,6 +40,53 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.brown,
         foregroundColor: Colors.white,
         actions: [
+          // ── ไอคอนตะกร้าสินค้า (มุมบนขวา) ──
+          ValueListenableBuilder<List<Map<String, dynamic>>>(
+            valueListenable: CartService.instance.cartItems,
+            builder: (context, cart, child) {
+              final totalCount = CartService.instance.getTotalItemCount();
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.shopping_cart_outlined),
+                    tooltip: 'ตะกร้าสินค้า',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              CartScreen(tableNo: widget.tableNo),
+                        ),
+                      );
+                    },
+                  ),
+                  if (cart.isNotEmpty)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$totalCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+
+          // ── ไอคอนเปลี่ยนมุมมอง ──
           IconButton(
             icon: Icon(isGridView ? Icons.view_list : Icons.grid_view),
             onPressed: () => setState(() => isGridView = !isGridView),
@@ -46,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Stack(
         children: [
-          // ── เนื้อหาหลัก ──
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('menu').snapshots(),
             builder: (context, snapshot) {
@@ -59,7 +107,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
               final allDocs = snapshot.data?.docs ?? [];
 
-              // ดึง category จาก Firestore จริง
               final Set<String> rawCategories = {};
               for (final doc in allDocs) {
                 final data = doc.data() as Map<String, dynamic>;
@@ -68,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
               }
               final categories = ['ทั้งหมด', ...rawCategories.toList()..sort()];
 
-              // กรองตาม category
               final filteredDocs = selectedCategory == 'ทั้งหมด'
                   ? allDocs
                   : allDocs.where((doc) {
@@ -122,7 +168,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
 
-          // ── Notification Listener (ไม่แสดง UI แต่ฟัง Firestore) ──
           _OrderNotificationListener(tableNo: widget.tableNo),
         ],
       ),
@@ -221,7 +266,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // รูปภาพ + badge ยอดนิยม
             Expanded(
               child: Stack(
                 fit: StackFit.expand,
@@ -238,7 +282,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : _placeholder(),
                   ),
-                  // ── Badge ยอดนิยม ──
                   if (isPopular)
                     Positioned(
                       top: 6,
@@ -265,7 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            // ข้อมูลด้านล่าง
             Padding(
               padding: const EdgeInsets.all(8),
               child: Column(
@@ -363,7 +405,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     : _placeholder(),
               ),
             ),
-            // ── Badge ยอดนิยม (มุมบนขวาของรูป) ──
             if (isPopular)
               Positioned(
                 top: -4,
@@ -446,8 +487,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
 // ============================================================
 // ORDER NOTIFICATION LISTENER
-// วางไว้ใน Stack ของ HomeScreen — ฟัง Firestore แบบ real-time
-// เมื่อ order ของ user นี้เปลี่ยนเป็น 'ready' → popup แจ้งเตือน
 // ============================================================
 class _OrderNotificationListener extends StatefulWidget {
   final int tableNo;
@@ -460,7 +499,6 @@ class _OrderNotificationListener extends StatefulWidget {
 
 class _OrderNotificationListenerState
     extends State<_OrderNotificationListener> {
-  // เก็บ docId ที่แจ้งเตือนไปแล้ว ป้องกัน popup ซ้ำ
   final Set<String> _notifiedIds = {};
 
   @override
@@ -487,7 +525,6 @@ class _OrderNotificationListenerState
             }
           }
         }
-        // widget นี้ไม่แสดง UI ใดๆ
         return const SizedBox.shrink();
       },
     );
@@ -496,7 +533,6 @@ class _OrderNotificationListenerState
   void _showReadyDialog(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
-    // ดึงชื่อเมนูจาก cache หรือ Firestore
     FirebaseFirestore.instance
         .collection('menu')
         .doc(data['menuId'] ?? '')
@@ -559,7 +595,6 @@ class _OrderNotificationListenerState
                       ),
                     ),
                     onPressed: () {
-                      // mark notified = true → ป้องกัน popup ซ้ำ
                       FirebaseFirestore.instance
                           .collection('orders')
                           .doc(doc.id)

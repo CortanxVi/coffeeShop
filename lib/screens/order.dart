@@ -1,7 +1,6 @@
-import 'package:a/service/paymentdialog.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:a/service/paymentdialog.dart';
 
 class OrderScreen extends StatefulWidget {
   const OrderScreen({super.key});
@@ -38,6 +37,32 @@ class _OrderScreenState extends State<OrderScreen> {
       return doc.data()!;
     }
     return {};
+  }
+
+  /// คืนค่าราคาต่อหน่วยจาก orderData ก่อน ถ้าไม่มีค่อย fallback จาก menuData
+  double _unitPrice(
+    Map<String, dynamic> orderData,
+    Map<String, dynamic> menuData,
+  ) {
+    if (orderData['price'] != null) {
+      return (orderData['price'] as num).toDouble();
+    }
+    return (menuData['price'] ?? 0 as num).toDouble();
+  }
+
+  /// คืนจำนวนสินค้า (quantity) จาก orderData
+  int _qty(Map<String, dynamic> orderData) =>
+      (orderData['quantity'] ?? 1) as int;
+
+  /// คืนยอดรวมของออเดอร์นี้
+  double _totalPrice(
+    Map<String, dynamic> orderData,
+    Map<String, dynamic> menuData,
+  ) {
+    if (orderData['totalPrice'] != null) {
+      return (orderData['totalPrice'] as num).toDouble();
+    }
+    return _unitPrice(orderData, menuData) * _qty(orderData);
   }
 
   @override
@@ -94,6 +119,7 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
   Widget _buildListView(List<QueryDocumentSnapshot> docs) {
     return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: docs.length,
       itemBuilder: (context, index) {
         final orderData = docs[index].data() as Map<String, dynamic>;
@@ -106,83 +132,192 @@ class _OrderScreenState extends State<OrderScreen> {
           builder: (context, menuSnapshot) {
             if (menuSnapshot.connectionState == ConnectionState.waiting) {
               return const Card(
-                margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                child: ListTile(title: Text('กำลังโหลด...')),
+                margin: EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                child: ListTile(
+                  title: Text('กำลังโหลด...'),
+                  leading: CircleAvatar(child: CircularProgressIndicator()),
+                ),
               );
             }
             final menuData = menuSnapshot.data ?? {};
-            final menuName = menuData['name'] ?? 'ไม่ระบุเมนู';
-            final price = (menuData['price'] ?? 0).toDouble();
-            final imageUrl = menuData['imageUrl'];
+            // ชื่อเมนู: ดึงจาก orderData ก่อน (บันทึกตอนสั่ง) → fallback menuData
+            final menuName =
+                (orderData['menuName']?.toString().isNotEmpty == true
+                    ? orderData['menuName']
+                    : menuData['name']) ??
+                'ไม่ระบุเมนู';
+            final imageUrl =
+                orderData['imageUrl']?.toString().isNotEmpty == true
+                ? orderData['imageUrl']
+                : menuData['imageUrl'];
+            final qty = _qty(orderData);
+            final unitP = _unitPrice(orderData, menuData);
+            final totalP = _totalPrice(orderData, menuData);
 
             return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               color: status == 'ready' ? Colors.green[50] : Colors.white,
-              child: ListTile(
-                leading: imageUrl != null
-                    ? CircleAvatar(
-                        backgroundImage: NetworkImage(imageUrl),
-                        onBackgroundImageError: (_, __) {},
-                      )
-                    : CircleAvatar(
-                        backgroundColor: Colors.brown[100],
-                        child: Text(orderData['tableNo']?.toString() ?? '-'),
+              elevation: 2,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _showOrderDetail(context, orderData, menuData),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // รูปภาพ
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 60,
+                          height: 60,
+                          child:
+                              imageUrl != null && imageUrl.toString().isNotEmpty
+                              ? Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => _imgPlaceholder(
+                                    orderData['tableNo']?.toString() ?? '-',
+                                  ),
+                                )
+                              : _imgPlaceholder(
+                                  orderData['tableNo']?.toString() ?? '-',
+                                ),
+                        ),
                       ),
-                title: Text(
-                  menuName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                      const SizedBox(width: 12),
+
+                      // ข้อมูลออเดอร์
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // ชื่อเมนู + qty badge
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    menuName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                                // ── qty badge ──
+                                if (qty > 1)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.brown[100],
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      'x$qty',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Colors.brown,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+
+                            // ลูกค้า + โต๊ะ
+                            Text(
+                              '👤 ${orderData['customerName'] ?? '-'}  •  🪑 โต๊ะ ${orderData['tableNo'] ?? '-'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+
+                            // หมายเหตุ
+                            if (orderData['note'] != null &&
+                                orderData['note'].toString().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  '📝 ${orderData['note']}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[500],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+
+                            const SizedBox(height: 6),
+
+                            // สถานะ + ราคา + ปุ่ม
+                            Row(
+                              children: [
+                                _StatusChip(status: status),
+                                const Spacer(),
+
+                                // ราคา
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '฿${totalP.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        color: Colors.brown,
+                                      ),
+                                    ),
+                                    if (qty > 1)
+                                      Text(
+                                        '฿${unitP.toStringAsFixed(0)} x $qty',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(width: 8),
+
+                                // ปุ่ม action
+                                if (status == 'pending')
+                                  _ActionButton(
+                                    label: 'เสิร์ฟ',
+                                    color: Colors.orange,
+                                    onPressed: () => _showConfirmServeDialog(
+                                      context,
+                                      docId,
+                                      menuName,
+                                    ),
+                                  )
+                                else if (status == 'ready')
+                                  _ActionButton(
+                                    label: 'ชำระเงิน',
+                                    color: Colors.green,
+                                    onPressed: () => _showPaymentDialog(
+                                      context,
+                                      docId,
+                                      menuName,
+                                      totalP,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ลูกค้า: ${orderData['customerName'] ?? '-'}  โต๊ะ: ${orderData['tableNo'] ?? '-'}',
-                    ),
-                    const SizedBox(height: 4),
-                    _StatusChip(status: status),
-                  ],
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '฿${price.toInt()}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (status == 'pending')
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                        ),
-                        onPressed: () =>
-                            _showConfirmServeDialog(context, docId, menuName),
-                        child: const Text(
-                          'เสิร์ฟ',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      )
-                    else if (status == 'ready')
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                        ),
-                        onPressed: () =>
-                            _showPaymentDialog(context, docId, menuName, price),
-                        child: const Text(
-                          'ชำระเงิน',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                  ],
-                ),
-                onTap: () => _showOrderDetail(context, orderData, menuData),
               ),
             );
           },
@@ -199,7 +334,7 @@ class _OrderScreenState extends State<OrderScreen> {
       padding: const EdgeInsets.all(10),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.95,
+        childAspectRatio: 0.85,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
       ),
@@ -219,71 +354,120 @@ class _OrderScreenState extends State<OrderScreen> {
               );
             }
             final menuData = menuSnapshot.data ?? {};
-            final menuName = menuData['name'] ?? 'ไม่ระบุเมนู';
-            final price = (menuData['price'] ?? 0).toDouble();
+            final menuName =
+                (orderData['menuName']?.toString().isNotEmpty == true
+                    ? orderData['menuName']
+                    : menuData['name']) ??
+                'ไม่ระบุเมนู';
+            final qty = _qty(orderData);
+            final totalP = _totalPrice(orderData, menuData);
 
             return GestureDetector(
               onTap: () => _showOrderDetail(context, orderData, menuData),
               child: Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 color: status == 'ready' ? Colors.green[50] : Colors.brown[50],
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'โต๊ะ ${orderData['tableNo'] ?? '-'}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // โต๊ะ + qty
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'โต๊ะ ${orderData['tableNo'] ?? '-'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          if (qty > 1) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.brown,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'x$qty',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
+                      const SizedBox(height: 6),
+
+                      // ชื่อเมนู
+                      Text(
                         menuName,
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 13,
                           color: Colors.brown,
+                          fontWeight: FontWeight.w600,
                         ),
                         textAlign: TextAlign.center,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    Text(
-                      '฿${price.toInt()}',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    _StatusChip(status: status),
-                    const SizedBox(height: 8),
-                    if (status == 'pending')
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                        ),
-                        onPressed: () =>
-                            _showConfirmServeDialog(context, docId, menuName),
-                        child: const Text(
-                          'เสิร์ฟ',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      )
-                    else if (status == 'ready')
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                        ),
-                        onPressed: () =>
-                            _showPaymentDialog(context, docId, menuName, price),
-                        child: const Text(
-                          'ชำระเงิน',
-                          style: TextStyle(color: Colors.white),
+                      const SizedBox(height: 2),
+
+                      // ชื่อลูกค้า
+                      Text(
+                        orderData['customerName'] ?? '-',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+
+                      // ราคา
+                      Text(
+                        '฿${totalP.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          color: Colors.brown,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
                         ),
                       ),
-                  ],
+                      const SizedBox(height: 4),
+
+                      _StatusChip(status: status),
+                      const SizedBox(height: 8),
+
+                      if (status == 'pending')
+                        _ActionButton(
+                          label: 'เสิร์ฟ',
+                          color: Colors.orange,
+                          onPressed: () =>
+                              _showConfirmServeDialog(context, docId, menuName),
+                        )
+                      else if (status == 'ready')
+                        _ActionButton(
+                          label: 'ชำระเงิน',
+                          color: Colors.green,
+                          onPressed: () => _showPaymentDialog(
+                            context,
+                            docId,
+                            menuName,
+                            totalP,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -296,8 +480,6 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
   // DIALOGS
   // ============================================================
-
-  // Dialog ยืนยันเสิร์ฟ
   void _showConfirmServeDialog(
     BuildContext context,
     String docId,
@@ -306,6 +488,7 @@ class _OrderScreenState extends State<OrderScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('ยืนยันการเสิร์ฟ'),
         content: Text('เสิร์ฟ "$menuName" เรียบร้อยแล้วใช่หรือไม่?'),
         actions: [
@@ -328,7 +511,6 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  // Dialog QR Payment (จำลอง)
   void _showPaymentDialog(
     BuildContext context,
     String docId,
@@ -347,30 +529,39 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  // Dialog รายละเอียด order
   void _showOrderDetail(
     BuildContext context,
     Map<String, dynamic> orderData,
     Map<String, dynamic> menuData,
   ) {
+    final qty = _qty(orderData);
+    final unitP = _unitPrice(orderData, menuData);
+    final totalP = _totalPrice(orderData, menuData);
+    final menuName =
+        (orderData['menuName']?.toString().isNotEmpty == true
+            ? orderData['menuName']
+            : menuData['name']) ??
+        '-';
+    final imageUrl = orderData['imageUrl']?.toString().isNotEmpty == true
+        ? orderData['imageUrl']
+        : menuData['imageUrl'];
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 520),
+          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 560),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Header ──
+              // Header
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 8, 16),
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: Colors.brown,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: Row(
                   children: [
@@ -382,7 +573,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        menuData['name'] ?? '-',
+                        menuName,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -405,21 +596,19 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
               ),
 
-              // ── Content ──
+              // Content
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // รูปภาพ (ถ้ามี)
-                      if (menuData['imageUrl'] != null &&
-                          menuData['imageUrl'].toString().isNotEmpty)
+                      // รูปภาพ
+                      if (imageUrl != null && imageUrl.toString().isNotEmpty)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: Image.network(
-                            menuData['imageUrl'],
+                            imageUrl,
                             height: 140,
                             width: double.infinity,
                             fit: BoxFit.cover,
@@ -436,8 +625,7 @@ class _OrderScreenState extends State<OrderScreen> {
                             ),
                           ),
                         ),
-                      if (menuData['imageUrl'] != null &&
-                          menuData['imageUrl'].toString().isNotEmpty)
+                      if (imageUrl != null && imageUrl.toString().isNotEmpty)
                         const SizedBox(height: 14),
 
                       // ── ข้อมูลเมนู ──
@@ -446,26 +634,31 @@ class _OrderScreenState extends State<OrderScreen> {
                         color: Colors.brown,
                         title: 'ข้อมูลเมนู',
                         children: [
-                          _detailRow('ชื่อเมนู', menuData['name'] ?? '-'),
+                          _detailRow('ชื่อเมนู', menuName),
                           _detailRow(
-                            'ราคา',
-                            '฿${menuData['price'] ?? 0}',
+                            'ราคา/ชิ้น',
+                            '฿${unitP.toStringAsFixed(0)}',
                             valueColor: Colors.brown,
+                          ),
+                          _detailRow(
+                            'จำนวน',
+                            '$qty ชิ้น',
+                            valueColor: Colors.brown,
+                            bold: true,
+                          ),
+                          _detailRow(
+                            'ยอดรวม',
+                            '฿${totalP.toStringAsFixed(0)}',
+                            valueColor: Colors.green[700],
                             bold: true,
                           ),
                           if (menuData['category'] != null)
                             _detailRow('หมวดหมู่', menuData['category'] ?? '-'),
-                          if (menuData['description'] != null &&
-                              menuData['description'].toString().isNotEmpty)
-                            _detailRow(
-                              'คำอธิบาย',
-                              menuData['description'] ?? '-',
-                            ),
                         ],
                       ),
                       const SizedBox(height: 12),
 
-                      // ── ข้อมูลออร์เดอร์ ──
+                      // ── ข้อมูลออเดอร์ ──
                       _detailSection(
                         icon: Icons.person,
                         color: Colors.blue,
@@ -492,7 +685,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
               ),
 
-              // ── Footer ปุ่มปิด ──
+              // Footer
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: SizedBox(
@@ -520,7 +713,22 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  // ── Helper: กล่อง Section ──
+  // ── Helpers ──
+  Widget _imgPlaceholder(String tableText) {
+    return Container(
+      color: Colors.brown[100],
+      child: Center(
+        child: Text(
+          tableText,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.brown,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _detailSection({
     required IconData icon,
     required Color color,
@@ -559,7 +767,6 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  // ── Helper: แถวข้อมูล ──
   Widget _detailRow(
     String label,
     String value, {
@@ -594,7 +801,6 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  // ── Helper: แปลง status เป็นข้อความ ──
   String _statusLabel(String status) {
     switch (status) {
       case 'pending':
@@ -608,7 +814,6 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
-  // ── Helper: สีตาม status ──
   Color _statusColor(String status) {
     switch (status) {
       case 'pending':
@@ -620,316 +825,6 @@ class _OrderScreenState extends State<OrderScreen> {
       default:
         return Colors.grey;
     }
-  }
-}
-
-// ============================================================
-// PAYMENT DIALOG — QR จำลอง
-// ============================================================
-class _PaymentDialog extends StatefulWidget {
-  final String docId;
-  final String menuName;
-  final double price;
-  final Future<void> Function() onPaymentConfirmed;
-
-  const _PaymentDialog({
-    required this.docId,
-    required this.menuName,
-    required this.price,
-    required this.onPaymentConfirmed,
-  });
-
-  @override
-  State<_PaymentDialog> createState() => _PaymentDialogState();
-}
-
-class _PaymentDialogState extends State<_PaymentDialog> {
-  bool _isPaying = false;
-  bool _isPaid = false;
-
-  // QR Data จำลอง — ใส่ข้อมูลร้านและ order ให้ดูสมจริง
-  String get _mockQrData {
-    final ref = 'REF${DateTime.now().millisecondsSinceEpoch}';
-    return 'STORE=WanWanCafe|ITEM=${widget.menuName}|AMT=${widget.price.toStringAsFixed(2)}|CCY=THB|$ref';
-  }
-
-  Future<void> _confirmPayment() async {
-    setState(() => _isPaying = true);
-    await widget.onPaymentConfirmed();
-    if (mounted) {
-      setState(() {
-        _isPaying = false;
-        _isPaid = true;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-      contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      title: Row(
-        children: [
-          Icon(
-            _isPaid ? Icons.check_circle : Icons.qr_code_2,
-            color: _isPaid ? Colors.green : Colors.brown,
-            size: 28,
-          ),
-          const SizedBox(width: 8),
-          Text(_isPaid ? 'ชำระเงินสำเร็จ' : 'ชำระเงิน'),
-        ],
-      ),
-      content: SizedBox(
-        width: 300,
-        child: _isPaid ? _buildSuccessView() : _buildQRView(),
-      ),
-      actions: _isPaid
-          ? [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.brown,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'ปิด',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-            ]
-          : [
-              TextButton(
-                onPressed: _isPaying ? null : () => Navigator.pop(context),
-                child: const Text(
-                  'ยกเลิก',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                onPressed: _isPaying ? null : _confirmPayment,
-                child: _isPaying
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'ยืนยันรับเงินแล้ว',
-                        style: TextStyle(color: Colors.white),
-                      ),
-              ),
-            ],
-    );
-  }
-
-  // ── QR View ──
-  Widget _buildQRView() {
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ชื่อเมนูและราคา
-          Text(
-            widget.menuName,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '฿${widget.price.toStringAsFixed(2)}',
-            style: const TextStyle(
-              fontSize: 32,
-              color: Colors.green,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // QR Code กล่อง
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: Colors.grey.shade300, width: 2),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.15),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Logo ร้านบน QR
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.coffee, color: Colors.brown, size: 16),
-                    const SizedBox(width: 4),
-                    Text(
-                      'WanWan Cafe',
-                      style: TextStyle(
-                        color: Colors.brown[700],
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // QR Code
-                QrImageView(
-                  data: _mockQrData,
-                  version: QrVersions.auto,
-                  size: 200,
-                  backgroundColor: Colors.white,
-                  eyeStyle: const QrEyeStyle(
-                    eyeShape: QrEyeShape.square,
-                    color: Colors.black,
-                  ),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    dataModuleShape: QrDataModuleShape.square,
-                    color: Colors.black,
-                  ),
-                  errorStateBuilder: (context, error) => const SizedBox(
-                    width: 200,
-                    height: 200,
-                    child: Center(
-                      child: Text(
-                        'ไม่สามารถสร้าง QR ได้',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-                Text(
-                  'สแกนเพื่อชำระเงิน',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Badge Demo
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.orange[50],
-              border: Border.all(color: Colors.orange.shade200),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.info_outline, size: 13, color: Colors.orange),
-                SizedBox(width: 5),
-                Text(
-                  'Demo Mode — QR จำลอง',
-                  style: TextStyle(
-                    color: Colors.orange,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'กด "ยืนยันรับเงินแล้ว" เพื่อจบรายการ',
-            style: TextStyle(color: Colors.grey, fontSize: 11),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-        ],
-      ),
-    );
-  }
-
-  // ── Success View ──
-  Widget _buildSuccessView() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Animated check
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.green[50],
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.check_circle,
-              color: Colors.green,
-              size: 72,
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'ชำระเงินสำเร็จ!',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.menuName,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '฿${widget.price.toStringAsFixed(2)}',
-            style: const TextStyle(
-              color: Colors.grey,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.green[50],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'รายการถูกย้ายไปยัง History แล้ว',
-              style: TextStyle(color: Colors.green, fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -966,6 +861,45 @@ class _StatusChip extends StatelessWidget {
           fontSize: 11,
           color: color,
           fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// ACTION BUTTON (เสิร์ฟ / ชำระเงิน)
+// ============================================================
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onPressed;
+
+  const _ActionButton({
+    required this.label,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 32,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: 0,
+        ),
+        onPressed: onPressed,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );

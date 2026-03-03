@@ -32,8 +32,8 @@ class _BottomNavBarState extends State<BottomNavBar> {
         children: const [
           HomeScreen(tableNo: 1),
           OrderScreen(),
-          HistoryScreen(),
           DashboardScreen(),
+          HistoryScreen(),
           SignInScreen(),
         ],
       ),
@@ -59,17 +59,17 @@ class _BottomNavBarState extends State<BottomNavBar> {
             title: const Text('Order'),
           ),
           BottomBarItem(
-            icon: const Icon(Icons.history),
-            selectedColor: Colors.brown,
-            unSelectedColor: Colors.grey,
-            title: const Text('History'),
-          ),
-          BottomBarItem(
             icon: const Icon(Icons.dashboard_outlined),
             selectedIcon: const Icon(Icons.dashboard),
             selectedColor: Colors.brown,
             unSelectedColor: Colors.grey,
             title: const Text('Dashboard'),
+          ),
+          BottomBarItem(
+            icon: const Icon(Icons.history),
+            selectedColor: Colors.brown,
+            unSelectedColor: Colors.grey,
+            title: const Text('History'),
           ),
           BottomBarItem(
             icon: const Icon(Icons.person_2_outlined),
